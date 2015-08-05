@@ -32,6 +32,8 @@ int main(int argc, char* argv[])
 		
 		memset(&hints, 0, sizeof(hints));
 		memset(&tv, 0, sizeof(tv));
+		memset(msg, 0, sizeof(msg));
+		memset(repl, 0, sizeof(repl));
 		FD_ZERO(&fds);
 		bytes_transmitted = 0;
 	}
