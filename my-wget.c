@@ -12,6 +12,15 @@
 
 #define WEB_PORT "80"
 #define MY_ERRSTR "Error. Line: %d Error: %s\n"
+
+struct http_header
+{
+	int return_code;
+	int content_length;
+	
+	
+};
+
 int main(int argc, char* argv[])
 {
 
@@ -21,6 +30,9 @@ int main(int argc, char* argv[])
 	struct addrinfo *ai;
 	struct addrinfo *ai_beginning;
 	struct timeval tv;
+	char http_version[3];
+	int http_return_code;
+	char http_return_string[10];
 
 	fd_set fds;
 	
@@ -32,8 +44,6 @@ int main(int argc, char* argv[])
 		
 		memset(&hints, 0, sizeof(hints));
 		memset(&tv, 0, sizeof(tv));
-		memset(msg, 0, sizeof(msg));
-		memset(repl, 0, sizeof(repl));
 		FD_ZERO(&fds);
 		bytes_transmitted = 0;
 	}
@@ -50,7 +60,13 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	
+	file = open(argv[3], O_WRONLY | O_CREAT);
+	if (file == -1)
+	{	
+		printf(MY_ERRSTR, __LINE__, strerror(errno));
+		exit(errno);
+	}
+
 
 	
 	hints.ai_family = AF_INET;	
@@ -97,11 +113,12 @@ int main(int argc, char* argv[])
 	freeaddrinfo(ai_beginning);
 
 	len = sprintf(msg, "GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", argv[2], argv[1]);
-	if (len > sizeof(msg))
+	if (len == sizeof(msg))
 	{
 		printf(MY_ERRSTR, __LINE__, "Message too long!");
 		exit(0);
 	}
+
 
 	ret = write(sock, msg, len);
 	if (ret == -1)
@@ -110,15 +127,46 @@ int main(int argc, char* argv[])
 		exit(errno);
 	}
 
-
-	file = open(argv[3], O_WRONLY | O_CREAT);
-	if (file == -1)
-	{	
+	len = read(sock, repl, sizeof(repl));
+	if (len == -1)
+	{
+		int err = errno;
 		printf(MY_ERRSTR, __LINE__, strerror(errno));
-		exit(errno);
+		ret = close(sock);
+		if (ret == -1)
+		{
+			printf(MY_ERRSTR, __LINE__, strerror(errno));
+		}
+		exit(err);
 	}
+
+	ret = sscanf(repl, "HTTP /%s %d %s\r\n", http_version, &http_return_code, http_return_string);
+	if (ret != 3)
+	{
+		printf("Error in scanf. Line: %d Error: %s\n", __LINE__, "Did not read enough items");
+		exit(0);
+	}
+
+	printf("%s %d %s\n", http_version, http_return_code, http_return_string);
+
+	ret = write(file, repl, len);
+	if (ret == -1)
+	{
+		int err = errno;
+		printf(MY_ERRSTR, __LINE__, strerror(errno));
+		ret = close(sock);
+		if (ret == -1)
+		{
+			printf(MY_ERRSTR, __LINE__, strerror(errno));
+		}
+		exit(err);
+	}
+		
+	
+
 	do
 	{	
+		len = 0;
 		FD_SET(sock, &fds);
 		ret = select(sock + 1, &fds, NULL, NULL, &tv);
 		if (ret == 1)
@@ -126,6 +174,7 @@ int main(int argc, char* argv[])
 			len = read(sock, repl, sizeof(repl));
 			if (len == -1)
 			{
+				close(sock);
 				printf(MY_ERRSTR, __LINE__, strerror(errno));
 				exit(errno);
 			}
@@ -133,6 +182,7 @@ int main(int argc, char* argv[])
 		}
 		else if (ret == -1)
 		{
+			close(sock);
 			printf(MY_ERRSTR, __LINE__, strerror(errno));
 			exit(errno);
 		}
@@ -141,12 +191,15 @@ int main(int argc, char* argv[])
 			printf("File transferred or timeout occured\n");
 			break;
 		}
+
 		ret = write(file, repl, len);
 		if (ret == -1)
 		{
+			close(sock);
 			printf(MY_ERRSTR, __LINE__, strerror(errno));
 			exit(errno);
 		}
+		fwrite(repl, sizeof(char), len, stdout);
 
 	}while(1);
 
